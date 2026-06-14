@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2Invaders — Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f5f5f5; color: #222; padding: 2rem; }
+    h1 { font-size: 1.4em; font-weight: 500; margin-bottom: 0.25rem; }
+    .subtitle { font-size: 13px; color: #888; margin-bottom: 2rem; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 2rem; }
+    .metric { background: #fff; border-radius: 8px; padding: 1rem; border: 1px solid #e5e5e5; }
+    .metric-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .metric-value { font-size: 22px; font-weight: 500; }
+    .section-title { font-size: 15px; font-weight: 500; margin: 2rem 0 0.75rem; }
+    .card { background: #fff; border-radius: 8px; border: 1px solid #e5e5e5; padding: 1.25rem; margin-bottom: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: #888; font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    td { padding: 7px 8px; border-bottom: 1px solid #f0f0f0; }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: monospace; font-size: 11px; color: #999; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; }
+    .gold { background: #fef3c7; color: #92400e; }
+    .silver { background: #e5e7eb; color: #374151; }
+    .bronze { background: #fee2d5; color: #7c2d12; }
+    #status { font-size: 13px; color: #888; margin-bottom: 1rem; }
+    .refresh-btn { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    .refresh-btn:hover { background: #f5f5f5; }
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>2Invaders — Dashboard</h1>
+  <button class="refresh-btn" onclick="loadData()">↻ Aggiorna</button>
+</div>
+<p class="subtitle">Dati da Firebase Realtime Database</p>
+<p id="status">Caricamento...</p>
+
+<div class="metrics">
+  <div class="metric"><div class="metric-label">Partite giocate</div><div class="metric-value" id="m-runs">—</div></div>
+  <div class="metric"><div class="metric-label">Giocatori unici</div><div class="metric-value" id="m-players">—</div></div>
+  <div class="metric"><div class="metric-label">Score massimo</div><div class="metric-value" id="m-top">—</div></div>
+  <div class="metric"><div class="metric-label">Score medio</div><div class="metric-value" id="m-avg">—</div></div>
+  <div class="metric"><div class="metric-label">Livello massimo</div><div class="metric-value" id="m-level">—</div></div>
+  <div class="metric"><div class="metric-label">Ore di gioco</div><div class="metric-value" id="m-hours">—</div></div>
+</div>
+
+<div class="section-title">Distribuzione score</div>
+<div class="card">
+  <div style="position: relative; height: 200px;">
+    <canvas id="chart-dist" role="img" aria-label="Istogramma distribuzione punteggi"></canvas>
+  </div>
+</div>
+
+<div class="section-title">Top 10 score</div>
+<div class="card">
+  <table id="lb-table">
+    <thead><tr><th>#</th><th>Nickname</th><th>Score</th><th>UID</th><th>Data</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="section-title">Profili giocatori</div>
+<div class="card" style="overflow-x: auto;">
+  <table id="players-table">
+    <thead><tr><th>UID</th><th>Nickname</th><th>Sessioni</th><th>Runs</th><th>Lv max</th><th>Minuti</th><th>Prima visita</th><th>Ultima visita</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+const DB = "https://invaders-9b822-default-rtdb.europe-west1.firebasedatabase.app";
+let chartInstance = null;
+
+const fmt = ts => new Date(ts * 1000).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+async function loadData() {
+  const status = document.getElementById('status');
+  status.textContent = 'Caricamento...';
+  try {
+    status.textContent = 'Fetch leaderboard...';
+    const lbSoloRes = await fetch(DB + '/leaderboard_solo.json');
+    status.textContent = 'Fetch players...';
+    const playersRes = await fetch(DB + '/players.json');
+
+    status.textContent = 'Parsing dati...';
+    const lbRaw = await lbSoloRes.json();
+    const playersRaw = await playersRes.json();
+
+    status.textContent = `leaderboard HTTP ${lbSoloRes.status} | players HTTP ${playersRes.status}`;
+
+    const leaderboard = lbRaw && !lbRaw.error ? Object.values(lbRaw).filter(e => e && e.score != null) : [];
+    const players = playersRaw && !playersRaw.error
+      ? Object.entries(playersRaw).map(([uid, d]) => ({ uid, ...d }))
+      : [];
+
+    if (playersRaw && playersRaw.error) {
+      document.querySelector('#players-table tbody').innerHTML =
+        `<tr><td colspan="8" style="color:#e74c3c;padding:1rem">⚠️ Firebase dice: "${playersRaw.error}" — controlla le regole (.read: true su players/$uid).</td></tr>`;
+    }
+
+    renderMetrics(leaderboard, players);
+    renderChart(leaderboard);
+    renderLeaderboard(leaderboard);
+    renderPlayers(leaderboard, players);
+
+    status.textContent = `Aggiornato il ${new Date().toLocaleString('it-IT')} — ${leaderboard.length} partite, ${players.length} profili`;
+  } catch (e) {
+    status.textContent = 'Errore fetch: ' + e.message + ' (controlla la connessione o apri la console browser con F12)';
+  }
+}
+
+function renderMetrics(lb, players) {
+  const scores = lb.map(e => e.score).filter(s => s > 0);
+  const uniqueUids = new Set(lb.filter(e => e.uid).map(e => e.uid));
+  const totalSecs = players.reduce((a, p) => a + (p.total_play_seconds || 0), 0);
+  const maxLevel = players.reduce((a, p) => Math.max(a, p.furthest_level || 0), 0);
+
+  document.getElementById('m-runs').textContent = lb.length;
+  document.getElementById('m-players').textContent = uniqueUids.size;
+  document.getElementById('m-top').textContent = scores.length ? Math.max(...scores).toLocaleString() : '—';
+  document.getElementById('m-avg').textContent = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length).toLocaleString() : '—';
+  document.getElementById('m-level').textContent = maxLevel || '—';
+  document.getElementById('m-hours').textContent = (totalSecs / 3600).toFixed(1);
+}
+
+function renderChart(lb) {
+  const buckets = [0, 500, 1000, 2000, 5000, 10000, 20000, Infinity];
+  const labels = ['<500', '500-1k', '1k-2k', '2k-5k', '5k-10k', '10k-20k', '20k+'];
+  const counts = Array(7).fill(0);
+  lb.forEach(e => {
+    if (e.score <= 0) return;
+    for (let i = 0; i < buckets.length - 1; i++) {
+      if (e.score >= buckets[i] && e.score < buckets[i + 1]) { counts[i]++; break; }
+    }
+  });
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('chart-dist'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Partite', data: counts, backgroundColor: '#3266ad', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+}
+
+function renderLeaderboard(lb) {
+  const sorted = [...lb].sort((a, b) => b.score - a.score).slice(0, 10);
+  const medals = ['gold', 'silver', 'bronze'];
+  const tbody = document.querySelector('#lb-table tbody');
+  tbody.innerHTML = sorted.map((e, i) => `
+    <tr>
+      <td style="font-weight:500">${i + 1}</td>
+      <td style="font-weight:500">${e.name || '<i>anon</i>'}</td>
+      <td>${e.score.toLocaleString()}</td>
+      <td class="mono">${e.uid ? e.uid.slice(0, 8) + '…' : '—'}</td>
+      <td style="color:#999">${fmt(e.ts)}</td>
+      <td>${i < 3 ? `<span class="badge ${medals[i]}">${['🥇','🥈','🥉'][i]}</span>` : ''}</td>
+    </tr>
+  `).join('');
+}
+
+function renderPlayers(lb, players) {
+  const nameFor = uid => { const e = lb.find(x => x.uid === uid && x.name); return e ? e.name : '—'; };
+  const sorted = [...players].sort((a, b) => (b.furthest_level || 0) - (a.furthest_level || 0));
+  const tbody = document.querySelector('#players-table tbody');
+  tbody.innerHTML = sorted.map(p => `
+    <tr>
+      <td class="mono">${p.uid.slice(0, 8)}…</td>
+      <td>${nameFor(p.uid)}</td>
+      <td>${p.sessions || 0}</td>
+      <td>${p.runs_started || 0}</td>
+      <td style="font-weight:500">${p.furthest_level ? 'Lv ' + p.furthest_level : '—'}</td>
+      <td>${Math.round((p.total_play_seconds || 0) / 60)} min</td>
+      <td style="color:#999">${p.first_seen ? fmt(p.first_seen) : '—'}</td>
+      <td style="color:#999">${p.last_seen ? fmt(p.last_seen) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+loadData();
+</script>
+</body>
+</html>
