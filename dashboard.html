@@ -64,6 +64,14 @@
   </table>
 </div>
 
+<div class="section-title">Difficoltà per livello</div>
+<div class="card" style="overflow-x: auto;">
+  <table id="levels-table">
+    <thead><tr><th>Livello</th><th>Attempts</th><th>Clears</th><th>Fail rate</th><th>Difficoltà</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
 <div class="section-title">Profili giocatori</div>
 <div class="card" style="overflow-x: auto;">
   <table id="players-table">
@@ -107,6 +115,7 @@ async function loadData() {
     renderChart(leaderboard);
     renderLeaderboard(leaderboard);
     renderPlayers(leaderboard, players);
+    renderLevelStats(players);
 
     status.textContent = `Aggiornato il ${new Date().toLocaleString('it-IT')} — ${leaderboard.length} partite, ${players.length} profili`;
   } catch (e) {
@@ -160,6 +169,39 @@ function renderLeaderboard(lb) {
       <td>${i < 3 ? `<span class="badge ${medals[i]}">${['🥇','🥈','🥉'][i]}</span>` : ''}</td>
     </tr>
   `).join('');
+}
+
+function renderLevelStats(players) {
+  const attempts = {};
+  const clears = {};
+  players.forEach(p => {
+    if (Array.isArray(p.attempts)) {
+      p.attempts.forEach((v, i) => { if (i > 0 && v) attempts[i] = (attempts[i] || 0) + v; });
+    }
+    if (Array.isArray(p.clears)) {
+      p.clears.forEach((v, i) => { if (i > 0 && v) clears[i] = (clears[i] || 0) + v; });
+    }
+  });
+  const levels = [...new Set([...Object.keys(attempts), ...Object.keys(clears)])].map(Number).sort((a,b)=>a-b);
+  const failColor = r => r >= 0.66 ? '#e74c3c' : r >= 0.33 ? '#e67e22' : '#27ae60';
+  const bar = r => `<div style="display:inline-block;width:${Math.round(r*80)}px;height:8px;background:${failColor(r)};border-radius:4px;vertical-align:middle"></div>`;
+  const tbody = document.querySelector('#levels-table tbody');
+  if (levels.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#999;padding:1rem">Nessun dato disponibile</td></tr>';
+    return;
+  }
+  tbody.innerHTML = levels.map(lv => {
+    const a = attempts[lv] || 0;
+    const c = clears[lv] || 0;
+    const r = a > 0 ? (a - c) / a : 0;
+    return `<tr>
+      <td style="font-weight:500">Livello ${lv}</td>
+      <td>${a}</td>
+      <td>${c}</td>
+      <td style="color:${failColor(r)};font-weight:500">${a > 0 ? Math.round(r * 100) + '%' : '—'}</td>
+      <td>${a > 0 ? bar(r) : ''}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderPlayers(lb, players) {
