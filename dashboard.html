@@ -156,7 +156,7 @@ function renderChart(lb) {
 }
 
 function renderLeaderboard(lb) {
-  const sorted = [...lb].sort((a, b) => b.score - a.score).slice(0, 10);
+  const sorted = [...lb].sort((a, b) => b.score - a.score).slice(0, 100);
   const medals = ['gold', 'silver', 'bronze'];
   const tbody = document.querySelector('#lb-table tbody');
   tbody.innerHTML = sorted.map((e, i) => `
