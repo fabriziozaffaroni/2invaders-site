@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>PlayTogether — Grid Resolution Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #060606;
+      color: #00CC33;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 20px 40px;
+      gap: 14px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 12px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #00FF50;
+      text-align: center;
+    }
+
+    .subtitle {
+      font-size: 10px;
+      color: #005515;
+      text-align: center;
+    }
+
+    .grid {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .label {
+      text-align: center;
+      line-height: 1.5;
+    }
+    .label .res    { font-size: 13px; color: #00FF50; font-weight: bold; letter-spacing: 1px; }
+    .label .desc   { font-size: 10px; color: #007720; }
+    .label .rec    { font-size: 10px; color: #FFD700; }
+
+    .canvas-wrap {
+      position: relative;
+      width: 180px;
+      height: 240px;
+      border: 1px solid #001a06;
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      width: 180px;
+      height: 240px;
+    }
+
+    /* Scanlines overlay */
+    .canvas-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 1px,
+        rgba(0,0,0,0.18) 1px, rgba(0,0,0,0.18) 2px
+      );
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    footer {
+      font-size: 9px;
+      color: #003308;
+      text-align: center;
+      margin-top: 16px;
+      max-width: 700px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>PlayTogether — Grid Resolution Demo</h1>
+  <p class="subtitle">Osserva il movimento della palla: a sinistra è fluido, a destra i pixel si accendono e spengono</p>
+
+  <div class="grid">
+
+    <div class="option">
+      <div class="label">
+        <div class="res">480 × 640</div>
+        <div class="desc">nessun effetto (riferimento)</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="c1" width="180" height="240"></canvas>
+      </div>
+    </div>
+
+    <div class="option">
+      <div class="label">
+        <div class="res">240 × 320</div>
+        <div class="desc">effetto molto sottile (×2)</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="c2" width="90" height="120"></canvas>
+      </div>
+    </div>
+
+    <div class="option">
+      <div class="label">
+        <div class="res">160 × 213</div>
+        <div class="rec">★ consigliato (×3)</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="c3" width="60" height="80"></canvas>
+      </div>
+    </div>
+
+    <div class="option">
+      <div class="label">
+        <div class="res">120 × 160</div>
+        <div class="desc">molto chunky (×4)</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="c4" width="45" height="60"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    Ogni colonna simula come appare il gioco sul telefono a quella risoluzione di griglia.<br>
+    La pallina è 2×2 celle di gioco — il "salto" tra posizioni è l'effetto pixel che stai valutando.
+  </footer>
+
+<script>
+  const FG  = '#00CC33';
+  const BG  = '#000000';
+  const DIM = '#001505';
+
+  const BALL = 2;   // game pixels
+  const PAD_H = 2;  // game pixels
+
+  const configs = [
+    { id: 'c1', gw: 180, gh: 240 },
+    { id: 'c2', gw: 90,  gh: 120 },
+    { id: 'c3', gw: 60,  gh: 80  },
+    { id: 'c4', gw: 45,  gh: 60  },
+  ];
+
+  // Slightly stagger the angles so all four don't move identically
+  const angles = [32, 25, 41, 37];
+
+  configs.forEach((cfg, i) => {
+    cfg.canvas = document.getElementById(cfg.id);
+    cfg.ctx    = cfg.canvas.getContext('2d');
+
+    const W = cfg.gw, H = cfg.gh;
+
+    const spd = H * 0.008;
+    const a   = angles[i] * Math.PI / 180;
+    cfg.bx = W / 2;
+    cfg.by = H / 2;
+    cfg.vx = spd * Math.sin(a);
+    cfg.vy = -spd * Math.cos(a);   // start moving upward
+
+    cfg.pw  = Math.max(2, Math.round(W * 0.30));
+    cfg.p1x = W / 2;  // bottom paddle
+    cfg.p2x = W / 2;  // top paddle
+    cfg.margin = Math.max(2, Math.round(H * 0.05));
+  });
+
+  function update(cfg) {
+    const W = cfg.gw, H = cfg.gh;
+    const bs = BALL, ph = PAD_H, mg = cfg.margin, pw = cfg.pw;
+    const ai = W * 0.045;
+
+    // Move
+    cfg.bx += cfg.vx;
+    cfg.by += cfg.vy;
+
+    // Side walls
+    if (cfg.bx < 0)           { cfg.bx = 0;       cfg.vx =  Math.abs(cfg.vx); }
+    if (cfg.bx + bs >= W)     { cfg.bx = W - bs;  cfg.vx = -Math.abs(cfg.vx); }
+
+    // Lazy AI for both paddles
+    const bCx = cfg.bx + bs / 2;
+    cfg.p1x += Math.sign(bCx - cfg.p1x) * Math.min(ai, Math.abs(bCx - cfg.p1x));
+    cfg.p2x += Math.sign(bCx - cfg.p2x) * Math.min(ai, Math.abs(bCx - cfg.p2x));
+    cfg.p1x = Math.max(pw/2, Math.min(W - pw/2, cfg.p1x));
+    cfg.p2x = Math.max(pw/2, Math.min(W - pw/2, cfg.p2x));
+
+    // Top paddle
+    const p2Left = Math.round(cfg.p2x - pw/2);
+    if (cfg.vy < 0 && cfg.by <= mg + ph && cfg.bx + bs > p2Left && cfg.bx < p2Left + pw) {
+      cfg.vy = Math.abs(cfg.vy);
+      cfg.by = mg + ph;
+    } else if (cfg.by < -bs) {
+      cfg.by = H;  // wrap (missed paddle)
+    }
+
+    // Bottom paddle
+    const botY  = H - mg - ph;
+    const p1Left = Math.round(cfg.p1x - pw/2);
+    if (cfg.vy > 0 && cfg.by + bs >= botY && cfg.bx + bs > p1Left && cfg.bx < p1Left + pw) {
+      cfg.vy = -Math.abs(cfg.vy);
+      cfg.by = botY - bs;
+    } else if (cfg.by > H) {
+      cfg.by = 0;  // wrap (missed paddle)
+    }
+
+    // Snap to integer grid — this IS the pixel effect
+    cfg.bx = Math.round(cfg.bx);
+    cfg.by = Math.round(cfg.by);
+  }
+
+  function draw(cfg) {
+    const ctx = cfg.ctx;
+    const W = cfg.gw, H = cfg.gh;
+    const bs = BALL, ph = PAD_H, mg = cfg.margin, pw = cfg.pw;
+
+    // Clear
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+
+    // Center dashed line
+    ctx.fillStyle = DIM;
+    for (let y = 0; y < H; y += 4) ctx.fillRect(Math.floor(W / 2), y, 1, 2);
+
+    // Phosphor glow (shadow on game-pixel elements)
+    ctx.shadowColor = FG;
+    ctx.shadowBlur  = 1;
+    ctx.fillStyle   = FG;
+
+    // Top paddle
+    ctx.fillRect(Math.round(cfg.p2x - pw/2), mg, pw, ph);
+    // Bottom paddle
+    ctx.fillRect(Math.round(cfg.p1x - pw/2), H - mg - ph, pw, ph);
+    // Ball
+    ctx.fillRect(cfg.bx, cfg.by, bs, bs);
+
+    ctx.shadowBlur = 0;
+  }
+
+  function loop() {
+    configs.forEach(cfg => { update(cfg); draw(cfg); });
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+</body>
+</html>
