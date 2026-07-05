@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PlayTogether Arcade — Stats</title>
+  <style>
+    :root {
+      --green:  #00cc33;
+      --dim:    #1a6b33;
+      --red:    #cc3300;
+      --bg:     #000000;
+      --text:   #ffffff;
+      --muted:  #999999;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      padding: 32px 16px 48px;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 40px; }
+    header h1 {
+      font-size: clamp(16px, 4vw, 26px);
+      letter-spacing: 8px;
+      color: var(--green);
+      text-shadow: 0 0 10px var(--green);
+    }
+    header p { color: var(--muted); font-size: 15px; letter-spacing: 3px; margin-top: 8px; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #333;
+      margin: 24px 0;
+    }
+
+    /* ── Summary cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 0 0 8px;
+    }
+    .stat-box { border: 1px solid #333; padding: 20px 16px; text-align: center; }
+    .stat-value {
+      font-size: 36px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: var(--green);
+      text-shadow: 0 0 8px var(--green);
+    }
+    .stat-label { color: var(--muted); font-size: 14px; letter-spacing: 3px; margin-top: 8px; }
+
+    .updated {
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-align: left;
+      margin: 12px 0 32px;
+    }
+
+    /* ── Section header + sort hint ── */
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin: 0 0 12px;
+    }
+    .section-title { color: var(--muted); font-size: 14px; letter-spacing: 4px; }
+    .sort-hint     { color: var(--muted); font-size: 13px; letter-spacing: 2px; }
+
+    /* ── Player table ── */
+    .table-wrap { width: 100%; overflow-x: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 2px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #333;
+      text-align: left;
+      cursor: default;
+      user-select: none;
+    }
+    thead th.sortable {
+      cursor: pointer;
+      color: var(--text);
+    }
+    thead th.sortable:hover { color: var(--green); }
+    thead th .arrow { margin-left: 4px; opacity: 0.4; }
+    thead th.asc  .arrow::after { content: '▲'; opacity: 1; }
+    thead th.desc .arrow::after { content: '▼'; opacity: 1; }
+    thead th:not(.asc):not(.desc) .arrow::after { content: '⇅'; }
+
+    tbody tr { transition: background 0.1s; }
+    tbody tr:hover { background: rgba(255,255,255,0.04); }
+    tbody td {
+      font-size: 15px;
+      letter-spacing: 1px;
+      padding: 10px 10px;
+      border-bottom: 1px solid #111;
+      vertical-align: middle;
+      color: var(--text);
+    }
+
+    /* avatar cell */
+    .avatar-wrap { display: inline-block; }
+    .avatar {
+      width: 60px; height: 60px;
+      border: 1px solid #333;
+      border-radius: 2px;
+      object-fit: cover;
+      display: block;
+      cursor: zoom-in;
+    }
+    .avatar-wrap:hover .avatar { border-color: var(--green); }
+    .avatar-initials {
+      width: 60px; height: 60px;
+      border: 1px solid #333;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: bold;
+      color: var(--green);
+      background: #111;
+    }
+
+    /* overlay */
+    #img-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    #img-overlay.open { display: flex; }
+    #img-overlay img {
+      width: 512px; height: 512px;
+      object-fit: cover;
+      border: 2px solid var(--green);
+      box-shadow: 0 0 40px rgba(0,204,51,0.4);
+    }
+
+    .rank { color: var(--muted); font-size: 12px; }
+    .rank-1 { color: var(--green); text-shadow: 0 0 6px var(--green); }
+
+    .w   { color: var(--green); }
+    .l   { color: var(--red);   }
+    .dim { color: var(--muted); }
+
+    td.num { text-align: right; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 3px;
+      margin-top: 48px;
+    }
+    footer a { color: var(--muted); text-decoration: underline; }
+
+    .loading { color: var(--muted); text-align: center; letter-spacing: 3px; font-size: 15px; padding: 24px; }
+    .error   { color: var(--red);   text-align: center; letter-spacing: 3px; font-size: 15px; padding: 24px; }
+  </style>
+</head>
+<body>
+
+  <div id="img-overlay">
+    <img id="overlay-img" src="" alt="" />
+  </div>
+
+  <header>
+    <h1>PLAYTOGETHER ARCADE</h1>
+    <p>LIVE STATS</p>
+  </header>
+
+  <hr class="divider" />
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <div class="stat-value" id="total-players">—</div>
+      <div class="stat-label">TOTAL PLAYERS</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="active-7d">—</div>
+      <div class="stat-label">ACTIVE (7 DAYS)</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="total-matches">—</div>
+      <div class="stat-label">MATCHES PLAYED</div>
+    </div>
+  </div>
+  <div id="updated" class="updated"></div>
+
+  <hr class="divider" />
+
+  <div class="section-header">
+    <span class="section-title">LAST 100 ACTIVE PLAYERS</span>
+    <span class="sort-hint">Click column header to sort</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="players-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th></th><!-- avatar -->
+          <th>PLAYER</th>
+          <th class="sortable num" data-col="elo_rating">ELO<span class="arrow"></span></th>
+          <th class="sortable num" data-col="wins">W<span class="arrow"></span></th>
+          <th class="sortable num" data-col="losses">L<span class="arrow"></span></th>
+          <th class="num dim">vs ↑</th>
+          <th class="num dim">vs 🤖</th>
+          <th class="sortable" data-col="first_match">FIRST<span class="arrow"></span></th>
+          <th class="sortable" data-col="last_match">LAST<span class="arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="players-body">
+        <tr><td colspan="10" class="loading">LOADING...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="divider" />
+
+  <div class="section-header">
+    <span class="section-title">BOT STATS</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="bots-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>BOT</th>
+          <th class="sortable-bot num" data-col="elo_rating">ELO<span class="arrow"></span></th>
+          <th class="sortable-bot num" data-col="wins">W<span class="arrow"></span></th>
+          <th class="sortable-bot num" data-col="losses">L<span class="arrow"></span></th>
+          <th class="sortable-bot" data-col="first_match">FIRST<span class="arrow"></span></th>
+          <th class="sortable-bot" data-col="last_match">LAST<span class="arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="bots-body">
+        <tr><td colspan="7" class="loading">LOADING...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>© 2026 PlayTogether Arcade &nbsp;·&nbsp; <a href="privacy.html">Privacy Policy</a></p>
+  </footer>
+
+  <script>
+    const SUPABASE_URL  = 'https://hvvdkvhcrxwojvwrbqac.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2dmRrdmhjcnh3b2p2d3JicWFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTM3OTUsImV4cCI6MjA5NzQ2OTc5NX0.l_X2jBPzCW1Ny8BkjHEWqlEPqN1sdKltnqbcFgju_rs';
+
+    const HEADERS = {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+    };
+
+    // ── Fetch ──────────────────────────────────────────────────────────────────
+
+    async function fetchSummary() {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/public_stats?id=eq.1&select=*`, { headers: HEADERS });
+      if (!res.ok) throw new Error(`summary HTTP ${res.status}`);
+      const rows = await res.json();
+      return rows[0] ?? null;
+    }
+
+    async function fetchPlayers() {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_player_stats`, { headers: HEADERS });
+      if (!res.ok) throw new Error(`players HTTP ${res.status}`);
+      return res.json();
+    }
+
+    async function fetchBots() {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_bot_stats`, { headers: HEADERS });
+      if (!res.ok) throw new Error(`bots HTTP ${res.status}`);
+      return res.json();
+    }
+
+    // ── Render summary ─────────────────────────────────────────────────────────
+
+    function renderSummary(stats) {
+      if (!stats) return;
+      document.getElementById('total-players').textContent = stats.total_players;
+      document.getElementById('active-7d').textContent     = stats.active_7d;
+      document.getElementById('total-matches').textContent = stats.total_matches;
+      document.getElementById('updated').textContent =
+        `LAST UPDATED: ${fmtDate(stats.updated_at)}`;
+    }
+
+    // ── Render players table ───────────────────────────────────────────────────
+
+    let _players = [];
+    let _sortCol = 'last_match';
+    let _sortDir = 'desc';
+
+    function renderPlayers() {
+      const sorted = [..._players].sort((a, b) => {
+        let av = a[_sortCol], bv = b[_sortCol];
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === 'string') {
+          av = av.toLowerCase(); bv = bv.toLowerCase();
+        }
+        return _sortDir === 'asc' ? (av < bv ? -1 : av > bv ? 1 : 0)
+                                  : (av > bv ? -1 : av < bv ? 1 : 0);
+      });
+
+      const tbody = document.getElementById('players-body');
+      tbody.innerHTML = sorted.map((p, i) => {
+        const rank = i + 1;
+        const rankClass = rank === 1 ? 'rank rank-1' : 'rank';
+        const initial = p.display_name ? esc(p.display_name[0].toUpperCase()) : '?';
+        const avatarHtml = p.avatar_url
+          ? `<div class="avatar-wrap"><img class="avatar" src="${esc(p.avatar_url)}" alt="" onerror="this.parentNode.innerHTML='<div class=\\'avatar-initials\\'>${initial}</div>'"></div>`
+          : `<div class="avatar-initials">${initial}</div>`;
+        const wins   = parseInt(p.wins,   10) || 0;
+        const losses = parseInt(p.losses, 10) || 0;
+        const total  = wins + losses;
+        const winPct = total > 0 ? Math.round(wins / total * 100) : null;
+        return `
+          <tr>
+            <td class="${rankClass}">${rank}</td>
+            <td>${avatarHtml}</td>
+            <td>${esc(p.display_name.toUpperCase())}
+              ${winPct !== null ? `<span class="dim" style="font-size:10px;margin-left:6px">${winPct}% WR</span>` : ''}
+            </td>
+            <td class="num">${p.elo_rating}</td>
+            <td class="num w">${p.wins}</td>
+            <td class="num l">${p.losses}</td>
+            <td class="num dim">${p.vs_human}</td>
+            <td class="num dim">${p.vs_bot}</td>
+            <td class="dim">${fmtDateShort(p.first_match)}</td>
+            <td>${fmtDateShort(p.last_match)}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    // ── Render bots table ──────────────────────────────────────────────────────
+
+    let _bots    = [];
+    let _bSortCol = 'last_match';
+    let _bSortDir = 'desc';
+
+    function renderBots() {
+      const sorted = [..._bots].sort((a, b) => {
+        let av = a[_bSortCol], bv = b[_bSortCol];
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
+        return _bSortDir === 'asc' ? (av < bv ? -1 : av > bv ? 1 : 0)
+                                   : (av > bv ? -1 : av < bv ? 1 : 0);
+      });
+
+      const tbody = document.getElementById('bots-body');
+      tbody.innerHTML = sorted.map((p, i) => {
+        const wins   = parseInt(p.wins,   10) || 0;
+        const losses = parseInt(p.losses, 10) || 0;
+        const total  = wins + losses;
+        const winPct = total > 0 ? Math.round(wins / total * 100) : null;
+        return `
+          <tr>
+            <td class="rank">${i + 1}</td>
+            <td>${esc(p.display_name.toUpperCase())}
+              ${winPct !== null ? `<span class="dim" style="font-size:10px;margin-left:6px">${winPct}% WR</span>` : ''}
+            </td>
+            <td class="num">${p.elo_rating}</td>
+            <td class="num w">${wins}</td>
+            <td class="num l">${losses}</td>
+            <td class="dim">${fmtDateShort(p.first_match)}</td>
+            <td>${fmtDateShort(p.last_match)}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    // ── Sort ───────────────────────────────────────────────────────────────────
+
+    function setupSort(selector, getCol, setCol, getDir, setDir, renderFn, tableSelector) {
+      document.querySelectorAll(selector).forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.col;
+          if (getCol() === col) setDir(getDir() === 'asc' ? 'desc' : 'asc');
+          else { setCol(col); setDir('desc'); }
+          document.querySelectorAll(`${tableSelector} thead th`).forEach(h => h.classList.remove('asc', 'desc'));
+          th.classList.add(getDir());
+          renderFn();
+        });
+      });
+    }
+
+    setupSort(
+      'thead th.sortable', () => _sortCol, v => _sortCol = v, () => _sortDir, v => _sortDir = v,
+      renderPlayers, '#players-table'
+    );
+    setupSort(
+      'thead th.sortable-bot', () => _bSortCol, v => _bSortCol = v, () => _bSortDir, v => _bSortDir = v,
+      renderBots, '#bots-table'
+    );
+
+    // Set initial sort indicators
+    document.querySelector(`#players-table [data-col="last_match"]`).classList.add('desc');
+    document.querySelector(`#bots-table   [data-col="last_match"]`).classList.add('desc');
+
+    // ── Utils ──────────────────────────────────────────────────────────────────
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      }).toUpperCase().replace(',', '');
+    }
+
+    function fmtDateShort(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      return `${date} ${time}`;
+    }
+
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── Avatar overlay ─────────────────────────────────────────────────────────
+
+    const overlay    = document.getElementById('img-overlay');
+    const overlayImg = document.getElementById('overlay-img');
+
+    document.getElementById('players-body').addEventListener('click', e => {
+      showOverlay(e); });
+    document.getElementById('bots-body').addEventListener('click', e => {
+      showOverlay(e); });
+
+    function showOverlay(e) {
+      const img = e.target.closest('.avatar-wrap')?.querySelector('img.avatar');
+      if (!img) return;
+      overlayImg.src = img.src;
+      overlay.classList.add('open');
+    }
+
+    overlay.addEventListener('click', () => overlay.classList.remove('open'));
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') overlay.classList.remove('open');
+    });
+
+    // ── Bootstrap ──────────────────────────────────────────────────────────────
+
+    Promise.all([fetchSummary(), fetchPlayers(), fetchBots()])
+      .then(([summary, players, bots]) => {
+        renderSummary(summary);
+
+        _players = players;
+        if (!players.length) {
+          document.getElementById('players-body').innerHTML =
+            '<tr><td colspan="10" class="loading">NO DATA YET</td></tr>';
+        } else {
+          renderPlayers();
+        }
+
+        _bots = bots;
+        if (!bots.length) {
+          document.getElementById('bots-body').innerHTML =
+            '<tr><td colspan="7" class="loading">NO DATA YET</td></tr>';
+        } else {
+          renderBots();
+        }
+      })
+      .catch(err => {
+        document.getElementById('updated').textContent = '';
+        document.getElementById('players-body').innerHTML =
+          `<tr><td colspan="10" class="error">ERROR: ${err.message}</td></tr>`;
+        document.getElementById('bots-body').innerHTML =
+          `<tr><td colspan="7" class="error">ERROR: ${err.message}</td></tr>`;
+      });
+  </script>
+
+</body>
+</html>
