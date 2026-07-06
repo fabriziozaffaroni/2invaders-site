@@ -172,6 +172,32 @@
 
     .loading { color: var(--muted); text-align: center; letter-spacing: 3px; font-size: 15px; padding: 24px; }
     .error   { color: var(--red);   text-align: center; letter-spacing: 3px; font-size: 15px; padding: 24px; }
+
+    /* ── Game selector ── */
+    .game-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .game-btn {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      letter-spacing: 3px;
+      padding: 8px 18px;
+      background: transparent;
+      border: 1px solid var(--dim);
+      color: var(--dim);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .game-btn:hover { border-color: var(--green); color: var(--green); }
+    .game-btn.active {
+      border-color: var(--green);
+      color: var(--green);
+      text-shadow: 0 0 6px var(--green);
+    }
+    .game-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -186,6 +212,12 @@
   </header>
 
   <hr class="divider" />
+
+  <div class="game-selector">
+    <button class="game-btn active" data-slot="1">PONG</button>
+    <button class="game-btn"        data-slot="3">TAP DUEL</button>
+    <button class="game-btn"        data-slot="2" disabled title="Coming soon">SKEET</button>
+  </div>
 
   <div class="stats-grid">
     <div class="stat-box">
@@ -279,8 +311,12 @@
       return rows[0] ?? null;
     }
 
-    async function fetchPlayers() {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_player_stats`, { headers: HEADERS });
+    async function fetchPlayers(gameSlot) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_player_stats`, {
+        method: 'POST',
+        headers: { ...HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_game_slot: gameSlot }),
+      });
       if (!res.ok) throw new Error(`players HTTP ${res.status}`);
       return res.json();
     }
@@ -463,9 +499,44 @@
       if (e.key === 'Escape') overlay.classList.remove('open');
     });
 
+    // ── Game selector ──────────────────────────────────────────────────────────
+
+    let _activeSlot = 1;
+
+    async function loadPlayers(slot) {
+      _activeSlot = slot;
+      document.getElementById('players-body').innerHTML =
+        '<tr><td colspan="10" class="loading">LOADING...</td></tr>';
+      try {
+        const players = await fetchPlayers(slot);
+        _players = players;
+        if (!players.length) {
+          document.getElementById('players-body').innerHTML =
+            '<tr><td colspan="10" class="loading">NO DATA YET</td></tr>';
+        } else {
+          _sortCol = 'last_match'; _sortDir = 'desc';
+          document.querySelectorAll('#players-table thead th').forEach(h => h.classList.remove('asc', 'desc'));
+          const lmTh = document.querySelector('#players-table [data-col="last_match"]');
+          if (lmTh) lmTh.classList.add('desc');
+          renderPlayers();
+        }
+      } catch (err) {
+        document.getElementById('players-body').innerHTML =
+          `<tr><td colspan="10" class="error">ERROR: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.querySelectorAll('.game-btn:not([disabled])').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.game-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadPlayers(parseInt(btn.dataset.slot, 10));
+      });
+    });
+
     // ── Bootstrap ──────────────────────────────────────────────────────────────
 
-    Promise.all([fetchSummary(), fetchPlayers(), fetchBots()])
+    Promise.all([fetchSummary(), fetchPlayers(1), fetchBots()])
       .then(([summary, players, bots]) => {
         renderSummary(summary);
 
